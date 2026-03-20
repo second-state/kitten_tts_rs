@@ -57,7 +57,8 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let voice = cli.voice
+    let voice = cli
+        .voice
         .or(cli.voice_pos)
         .unwrap_or_else(|| "Bruno".to_string());
 

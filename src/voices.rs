@@ -41,8 +41,14 @@ pub fn resolve_voice_name(name: &str, config_aliases: &HashMap<String, String>) 
     }
     // Maybe it's already an internal name
     let internal_names = [
-        "expr-voice-2-m", "expr-voice-2-f", "expr-voice-3-m", "expr-voice-3-f",
-        "expr-voice-4-m", "expr-voice-4-f", "expr-voice-5-m", "expr-voice-5-f",
+        "expr-voice-2-m",
+        "expr-voice-2-f",
+        "expr-voice-3-m",
+        "expr-voice-3-f",
+        "expr-voice-4-m",
+        "expr-voice-4-f",
+        "expr-voice-5-m",
+        "expr-voice-5-f",
     ];
     if internal_names.contains(&name) {
         return Some(name.to_string());

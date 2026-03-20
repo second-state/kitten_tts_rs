@@ -1,58 +1,41 @@
 # kitten-tts-rs 🐱🦀
 
-Rust port of [KittenTTS](https://github.com/KittenML/KittenTTS) — ultra-lightweight ONNX-based text-to-speech.
+A Rust port of [KittenTTS](https://github.com/KittenML/KittenTTS) — ultra-lightweight ONNX-based text-to-speech.
 
-Models range from 15M to 80M parameters (25–80 MB on disk). Runs on CPU by default, with optional GPU acceleration via CUDA (NVIDIA) or CoreML (Apple Silicon).
+KittenTTS delivers high-quality voice synthesis with models ranging from **15M to 80M parameters** (25–80 MB on disk). This Rust port provides a single, self-contained binary with no Python dependency.
 
-## Features
+> **Adapted from:** [KittenML/KittenTTS](https://github.com/KittenML/KittenTTS) (Apache-2.0). All model weights are from the original project.
 
-- **Single binary** — no Python, no pip, no venv
-- **ONNX Runtime** via the [`ort`](https://crates.io/crates/ort) crate
-- **8 built-in voices** — Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo
-- **GPU acceleration** — CUDA, TensorRT, or CoreML via Cargo features
-- **Text preprocessing** — number/currency expansion built-in
-- **24 kHz WAV output**
+## Key Features of KittenTTS
+
+- **Ultra-lightweight** — 15M to 80M parameters; smallest model is just 25 MB (int8)
+- **CPU-optimized** — ONNX-based inference runs efficiently without a GPU
+- **8 built-in voices** — Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, and Leo
+- **Adjustable speech speed** — control playback rate via the `--speed` parameter
+- **Text preprocessing** — built-in pipeline handles numbers, currencies, units, and more
+- **24 kHz output** — high-quality audio at a standard sample rate
+- **Edge-ready** — small enough to run on embedded devices, Raspberry Pi, phones
+
+## What This Rust Port Adds
+
+- **Single binary** — no Python, no pip, no virtualenv; just one executable
+- **Fast startup** — ~100ms vs ~2s for Python import overhead
+- **Tiny footprint** — ~10 MB binary (+ model weights) vs ~500 MB Python environment
+- **GPU acceleration** — optional CUDA, TensorRT, CoreML, or DirectML via Cargo features
+- **Cross-platform** — builds for Linux (x86_64, aarch64) and macOS (x86_64, aarch64)
+
+## Available Models
+
+| Model | Parameters | Size | Download |
+|---|---|---|---|
+| kitten-tts-mini | 80M | 80 MB | [KittenML/kitten-tts-mini-0.8](https://huggingface.co/KittenML/kitten-tts-mini-0.8) |
+| kitten-tts-micro | 40M | 41 MB | [KittenML/kitten-tts-micro-0.8](https://huggingface.co/KittenML/kitten-tts-micro-0.8) |
+| kitten-tts-nano | 15M | 56 MB | [KittenML/kitten-tts-nano-0.8](https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32) |
+| kitten-tts-nano (int8) | 15M | 25 MB | [KittenML/kitten-tts-nano-0.8-int8](https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8) |
 
 ## Quick Start
 
-```bash
-# Build (CPU only)
-cargo build --release
-
-# Build with NVIDIA GPU support
-cargo build --release --features cuda
-
-# Build with Apple Silicon (CoreML) support
-cargo build --release --features coreml
-```
-
-### Download a model
-
-Download from Hugging Face (e.g. the 80M mini model):
-
-```bash
-# Using huggingface-cli
-pip install huggingface_hub
-huggingface-cli download KittenML/kitten-tts-mini-0.8 --local-dir ./models/kitten-tts-mini
-
-# Or manually download config.json, the .onnx file, and voices.npz
-```
-
-### Generate speech
-
-```bash
-# Basic usage
-./target/release/kitten-tts ./models/kitten-tts-mini "Hello, world!" Bruno
-
-# With options
-./target/release/kitten-tts ./models/kitten-tts-mini "Hello, world!" \
-  --voice Luna --speed 1.2 --output hello.wav
-
-# List voices
-./target/release/kitten-tts ./models/kitten-tts-mini "" --list-voices
-```
-
-## Prerequisites
+### Prerequisites
 
 - **espeak-ng** for phonemization:
   ```bash
@@ -60,41 +43,133 @@ huggingface-cli download KittenML/kitten-tts-mini-0.8 --local-dir ./models/kitte
   brew install espeak-ng
 
   # Ubuntu/Debian
-  sudo apt install espeak-ng
+  sudo apt-get install -y espeak-ng
 
-  # Windows
-  # Download from https://github.com/espeak-ng/espeak-ng/releases
+  # Fedora/RHEL
+  sudo dnf install espeak-ng
+
+  # Arch
+  sudo pacman -S espeak-ng
   ```
 
-## GPU Acceleration
+### Download a Model (no Python required)
 
-### NVIDIA (CUDA / TensorRT)
+Download models directly from Hugging Face using `curl`:
+
+```bash
+mkdir -p models/kitten-tts-mini
+
+# Download config, model, and voices
+for FILE in config.json kitten_tts_mini_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-mini/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/$FILE"
+done
+```
+
+For the micro model:
+```bash
+mkdir -p models/kitten-tts-micro
+for FILE in config.json kitten_tts_micro_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-micro/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-micro-0.8/resolve/main/$FILE"
+done
+```
+
+For the nano model:
+```bash
+mkdir -p models/kitten-tts-nano
+for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-nano/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/main/$FILE"
+done
+```
+
+### Download Pre-built Binary
+
+Check the [Releases](https://github.com/second-state/kitten_tts_rs/releases) page for pre-built binaries for your platform.
+
+### Generate Speech
+
+```bash
+# Basic usage (outputs output.wav)
+kitten-tts ./models/kitten-tts-mini "Hello, world!" Bruno
+
+# Specify output file and speed
+kitten-tts ./models/kitten-tts-mini "Hello, world!" --voice Luna --speed 1.2 --output hello.wav
+
+# List available voices
+kitten-tts ./models/kitten-tts-mini "" --list-voices
+```
+
+### Available Voices
+
+| Voice | Gender | Description |
+|---|---|---|
+| Bella | Female | |
+| Jasper | Male | |
+| Luna | Female | |
+| Bruno | Male | |
+| Rosie | Female | |
+| Hugo | Male | |
+| Kiki | Female | |
+| Leo | Male | |
+
+## Building from Source
+
+### CPU Only (recommended for most users)
+
+```bash
+git clone https://github.com/second-state/kitten_tts_rs.git
+cd kitten_tts_rs
+
+cargo build --release
+# Binary at: target/release/kitten-tts
+```
+
+### With CUDA (NVIDIA GPU)
+
+Requires CUDA toolkit and cuDNN installed on the system. Linux and Windows only.
 
 ```bash
 cargo build --release --features cuda
-# or
+```
+
+### With TensorRT (NVIDIA GPU, optimized)
+
+Requires TensorRT runtime. Linux and Windows only.
+
+```bash
 cargo build --release --features tensorrt
 ```
 
-Requires CUDA toolkit and cuDNN installed on the system.
-
-### Apple Silicon (CoreML)
+### With CoreML (Apple Silicon / macOS)
 
 ```bash
 cargo build --release --features coreml
 ```
 
-Uses Apple's Neural Engine / Metal GPU via CoreML. The ONNX model is automatically converted to CoreML format at runtime.
+### With DirectML (Windows GPU)
 
-> **Note:** CoreML EP requires building ONNX Runtime from source with CoreML support. The `ort` crate handles this when the feature is enabled, but the first build may take longer.
+```bash
+cargo build --release --features directml
+```
 
-### Execution Provider Priority
+## CoreML on Apple Silicon: Pros and Cons
 
-When multiple features are enabled, the priority order is:
-1. TensorRT (if available)
-2. CUDA (if available)
-3. CoreML (if available)
-4. CPU (always available as fallback)
+### Pros
+- Uses Apple's **Neural Engine** and **Metal GPU** for compatible operations
+- No additional software installation needed (built into macOS)
+- Can accelerate larger models where GPU compute outweighs overhead
+
+### Cons
+- **Slower than CPU for small models** — In our benchmarks on Apple Silicon (Mac mini M4 Pro), the 80M-parameter mini model ran **~1.7x slower** with CoreML (8.2s) than CPU-only (4.8s)
+- **Dynamic shape limitations** — CoreML requires static tensor shapes; KittenTTS uses dynamic output shapes, so CoreML can only accelerate a subset of operations while the rest falls back to CPU
+- **Model compilation overhead** — CoreML compiles the ONNX model to its internal format on first load, adding latency
+- **First build is slower** — The `ort` crate may need to build ONNX Runtime from source with CoreML support
+
+### Recommendation
+
+For KittenTTS models (15M–80M params), **CPU-only is faster and simpler**. ONNX Runtime's CPU backend already uses SIMD (NEON on ARM, AVX on x86) and multi-threading effectively. CoreML would be more beneficial for models with 1B+ parameters where GPU compute dominates.
 
 ## Architecture
 
@@ -102,22 +177,37 @@ When multiple features are enabled, the priority order is:
 src/
 ├── main.rs        # CLI entry point (clap)
 ├── lib.rs         # Library root
-├── model.rs       # ONNX session, inference, chunking
-├── phonemize.rs   # espeak-ng phonemization + token ID mapping
+├── model.rs       # ONNX session, inference, text chunking
+├── phonemize.rs   # espeak-ng → IPA phonemes → token IDs
 ├── preprocess.rs  # Text normalization (numbers, currency, etc.)
 └── voices.rs      # NPZ voice embedding loader
 ```
 
-## Compared to Python KittenTTS
+### How It Works
+
+1. **Text preprocessing** — Expands numbers ("42" → "forty-two"), currencies ("$10.50" → "ten dollars and fifty cents"), and normalizes whitespace
+2. **Phonemization** — Converts English text to IPA phonemes via `espeak-ng`
+3. **Token encoding** — Maps IPA phonemes to integer token IDs using a symbol table matching the original Python implementation
+4. **Voice selection** — Loads style embeddings from the NPZ voice file
+5. **ONNX inference** — Runs the model with input tokens, voice style, and speed parameters
+6. **WAV output** — Writes 24 kHz 16-bit PCM audio
+
+### Compared to Python KittenTTS
 
 | | Python | Rust |
 |---|---|---|
 | Dependencies | onnxruntime, misaki, phonemizer, numpy, soundfile, spacy | ort, hound, espeak-ng (system) |
-| Binary size | ~500MB (with venv) | ~10MB |
+| Install size | ~500 MB (with venv) | ~10 MB binary |
 | Startup time | ~2s (Python import) | ~100ms |
 | Deployment | pip install + venv | Single binary |
-| GPU support | onnxruntime-gpu pip | Cargo feature flag |
+| GPU support | onnxruntime-gpu pip package | Cargo feature flags |
 
 ## License
 
 Apache-2.0 (same as KittenTTS)
+
+## Acknowledgments
+
+- [KittenML](https://kittenml.com) for the original KittenTTS models and Python library
+- [pyke/ort](https://crates.io/crates/ort) for the excellent ONNX Runtime Rust bindings
+- [espeak-ng](https://github.com/espeak-ng/espeak-ng) for phonemization

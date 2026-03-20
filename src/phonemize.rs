@@ -16,10 +16,18 @@ fn build_symbol_table() -> Vec<char> {
     let letters_ipa = "ɑɐɒæɓʙβɔɕçɗɖðʤəɘɚɛɜɝɞɟʄɡɠɢʛɦɧħɥʜɨɪʝɭɬɫɮʟɱɯɰŋɳɲɴøɵɸθœɶʘɹɺɾɻʀʁɽʂʃʈʧʉʊʋⱱʌɣɤʍχʎʏʑʐʒʔʡʕʢǀǁǂǃˈˌːˑʼʴʰʱʲʷˠˤ˞↓↑→↗↘'̩'ᵻ";
 
     let mut symbols: Vec<char> = Vec::new();
-    for c in pad.chars() { symbols.push(c); }
-    for c in punctuation.chars() { symbols.push(c); }
-    for c in letters.chars() { symbols.push(c); }
-    for c in letters_ipa.chars() { symbols.push(c); }
+    for c in pad.chars() {
+        symbols.push(c);
+    }
+    for c in punctuation.chars() {
+        symbols.push(c);
+    }
+    for c in letters.chars() {
+        symbols.push(c);
+    }
+    for c in letters_ipa.chars() {
+        symbols.push(c);
+    }
     symbols
 }
 
@@ -45,7 +53,7 @@ pub fn text_to_token_ids(phonemes: &str) -> Vec<i64> {
         // skip unknown chars (same as Python)
     }
     ids.push(10); // end token
-    ids.push(0);  // padding
+    ids.push(0); // padding
     ids
 }
 

@@ -6,9 +6,26 @@ use regex::Regex;
 // ── Number → Words ──
 
 const ONES: &[&str] = &[
-    "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-    "seventeen", "eighteen", "nineteen",
+    "",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
 ];
 
 const TENS: &[&str] = &[
@@ -53,7 +70,7 @@ pub fn number_to_words(n: i64) -> String {
     let n = n as u64;
 
     // Special: 100-9999 exact hundreds (not multiples of 1000) → "twelve hundred"
-    if (100..=9999).contains(&n) && n % 100 == 0 && n % 1000 != 0 {
+    if (100..=9999).contains(&n) && n.is_multiple_of(100) && !n.is_multiple_of(1000) {
         let h = n / 100;
         if h < 20 {
             return format!("{} hundred", ONES[h as usize]);

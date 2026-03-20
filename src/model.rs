@@ -49,7 +49,12 @@ impl KittenTTS {
         let model_path = model_dir.join(&config.model_file);
         let voices_path = model_dir.join(&config.voices);
 
-        Self::load(&model_path, &voices_path, config.speed_priors, config.voice_aliases)
+        Self::load(
+            &model_path,
+            &voices_path,
+            config.speed_priors,
+            config.voice_aliases,
+        )
     }
 
     /// Load from explicit ONNX model and voices file paths.
@@ -61,7 +66,7 @@ impl KittenTTS {
     ) -> Result<Self> {
         eprintln!("Loading ONNX model from {}...", model_path.display());
 
-        let mut eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
+        let eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
 
         #[cfg(feature = "tensorrt")]
         {
@@ -75,11 +80,13 @@ impl KittenTTS {
         }
         #[cfg(feature = "coreml")]
         {
-            eps.push(ort::ep::CoreML::default()
-                .with_subgraphs(true)
-                .with_static_input_shapes(true)
-                .with_model_format(ort::ep::coreml::ModelFormat::MLProgram)
-                .build());
+            eps.push(
+                ort::ep::CoreML::default()
+                    .with_subgraphs(true)
+                    .with_static_input_shapes(true)
+                    .with_model_format(ort::ep::coreml::ModelFormat::MLProgram)
+                    .build(),
+            );
             eprintln!("CoreML execution provider registered");
         }
         #[cfg(feature = "directml")]
@@ -96,9 +103,11 @@ impl KittenTTS {
             {
                 let builder = Session::builder()
                     .map_err(|e| anyhow::anyhow!("Failed to create session builder: {e}"))?;
-                let mut builder = builder.with_execution_providers(eps)
+                let mut builder = builder
+                    .with_execution_providers(eps)
                     .map_err(|e| anyhow::anyhow!("Failed to configure execution providers: {e}"))?;
-                builder.commit_from_file(model_path)
+                builder
+                    .commit_from_file(model_path)
                     .context("Failed to load ONNX model")?
             }
         };
@@ -121,7 +130,13 @@ impl KittenTTS {
     }
 
     /// Generate audio from text. Returns f32 samples at 24 kHz.
-    pub fn generate(&mut self, text: &str, voice: &str, speed: f32, clean_text: bool) -> Result<Vec<f32>> {
+    pub fn generate(
+        &mut self,
+        text: &str,
+        voice: &str,
+        speed: f32,
+        clean_text: bool,
+    ) -> Result<Vec<f32>> {
         let text = if clean_text {
             preprocess::preprocess(text)
         } else {
@@ -141,8 +156,14 @@ impl KittenTTS {
 
     fn generate_chunk(&mut self, text: &str, voice: &str, mut speed: f32) -> Result<Vec<f32>> {
         // Resolve voice name
-        let internal_voice = voices::resolve_voice_name(voice, &self.voice_aliases)
-            .with_context(|| format!("Unknown voice '{}'. Available: {:?}", voice, voices::VOICE_NAMES))?;
+        let internal_voice =
+            voices::resolve_voice_name(voice, &self.voice_aliases).with_context(|| {
+                format!(
+                    "Unknown voice '{}'. Available: {:?}",
+                    voice,
+                    voices::VOICE_NAMES
+                )
+            })?;
 
         // Apply speed prior
         if let Some(&prior) = self.speed_priors.get(&internal_voice) {
@@ -154,7 +175,9 @@ impl KittenTTS {
         let token_ids = phonemize::text_to_token_ids(&phonemes);
 
         // Get voice style embedding
-        let voice_data = self.voices.get(&internal_voice)
+        let voice_data = self
+            .voices
+            .get(&internal_voice)
             .with_context(|| format!("Voice data for '{}' not found in NPZ", internal_voice))?;
 
         let ref_idx = token_ids.len().min(voice_data.nrows().saturating_sub(1));
@@ -164,10 +187,7 @@ impl KittenTTS {
         let n_tokens = token_ids.len();
         let style_cols = voice_data.ncols();
 
-        let input_ids_array = ndarray::Array2::from_shape_vec(
-            (1, n_tokens),
-            token_ids,
-        )?;
+        let input_ids_array = ndarray::Array2::from_shape_vec((1, n_tokens), token_ids)?;
         let style_array = style.into_shape_with_order((1, style_cols))?;
         let speed_array = ndarray::Array1::from_vec(vec![speed]);
 
@@ -175,9 +195,9 @@ impl KittenTTS {
         let style_tensor = TensorRef::from_array_view(&style_array)?;
         let speed_tensor = TensorRef::from_array_view(&speed_array)?;
 
-        let outputs = self.session.run(
-            ort::inputs![input_ids_tensor, style_tensor, speed_tensor]
-        )?;
+        let outputs =
+            self.session
+                .run(ort::inputs![input_ids_tensor, style_tensor, speed_tensor])?;
 
         // Extract audio from first output
         let output = &outputs[0];
@@ -194,10 +214,7 @@ impl KittenTTS {
 
 /// Split text into chunks for processing, splitting on sentence boundaries.
 fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
-    let sentences: Vec<&str> = regex::Regex::new(r"[.!?]+")
-        .unwrap()
-        .split(text)
-        .collect();
+    let sentences: Vec<&str> = regex::Regex::new(r"[.!?]+").unwrap().split(text).collect();
 
     let mut chunks = Vec::new();
 
@@ -213,7 +230,7 @@ fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
             let words: Vec<&str> = sentence.split_whitespace().collect();
             let mut temp = String::new();
             for word in words {
-                if temp.len() + word.len() + 1 <= max_len {
+                if temp.len() + word.len() < max_len {
                     if !temp.is_empty() {
                         temp.push(' ');
                     }
