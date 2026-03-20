@@ -61,33 +61,47 @@ impl KittenTTS {
     ) -> Result<Self> {
         eprintln!("Loading ONNX model from {}...", model_path.display());
 
-        let mut builder = Session::builder()?;
+        let mut eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
 
-        // Register GPU execution providers if compiled with feature flags
         #[cfg(feature = "tensorrt")]
         {
-            builder = builder.with_execution_providers([ort::execution_providers::TensorRTExecutionProvider::default().build()])?;
+            eps.push(ort::ep::TensorRT::default().build());
             eprintln!("TensorRT execution provider registered");
         }
         #[cfg(feature = "cuda")]
         {
-            builder = builder.with_execution_providers([ort::execution_providers::CUDAExecutionProvider::default().build()])?;
+            eps.push(ort::ep::CUDA::default().build());
             eprintln!("CUDA execution provider registered");
         }
         #[cfg(feature = "coreml")]
         {
-            builder = builder.with_execution_providers([ort::execution_providers::CoreMLExecutionProvider::default().build()])?;
+            eps.push(ort::ep::CoreML::default()
+                .with_subgraphs(true)
+                .with_static_input_shapes(true)
+                .with_model_format(ort::ep::coreml::ModelFormat::MLProgram)
+                .build());
             eprintln!("CoreML execution provider registered");
         }
         #[cfg(feature = "directml")]
         {
-            builder = builder.with_execution_providers([ort::execution_providers::DirectMLExecutionProvider::default().build()])?;
+            eps.push(ort::ep::DirectML::default().build());
             eprintln!("DirectML execution provider registered");
         }
 
-        let session = builder
-            .commit_from_file(model_path)
-            .context("Failed to load ONNX model")?;
+        let session = if eps.is_empty() {
+            Session::builder()?
+                .commit_from_file(model_path)
+                .context("Failed to load ONNX model")?
+        } else {
+            {
+                let builder = Session::builder()
+                    .map_err(|e| anyhow::anyhow!("Failed to create session builder: {e}"))?;
+                let mut builder = builder.with_execution_providers(eps)
+                    .map_err(|e| anyhow::anyhow!("Failed to configure execution providers: {e}"))?;
+                builder.commit_from_file(model_path)
+                    .context("Failed to load ONNX model")?
+            }
+        };
 
         eprintln!("Loading voices from {}...", voices_path.display());
         let voice_data = voices::load_voices(voices_path)?;
