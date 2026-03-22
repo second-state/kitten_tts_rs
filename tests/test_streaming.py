@@ -81,7 +81,7 @@ def test_sse_streaming(client: OpenAI, voice: str, output_dir: Path):
         response_format="pcm",
         extra_body={"stream": True},
     ) as response:
-        raw_text = response.text
+        raw_text = response.read().decode("utf-8")
 
     # Parse SSE events from the raw response
     pcm_data = bytearray()
