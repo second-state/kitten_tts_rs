@@ -69,9 +69,44 @@ jobs:
           done
           ls -lh test-output/
 
+      - name: Test API server
+        run: |
+          ./target/release/kitten-tts-server ./models/kitten-tts-nano-int8 --port 8080 &
+          SERVER_PID=$!
+
+          # Wait for server to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              echo "Server is ready"
+              break
+            fi
+            sleep 1
+          done
+
+          # Test health endpoint
+          curl -sf http://localhost:8080/health
+          echo ""
+
+          # Test models endpoint
+          curl -sf http://localhost:8080/v1/models
+          echo ""
+
+          # Generate audio via API with different voices
+          mkdir -p test-output/api
+          for VOICE in alloy echo fable onyx nova shimmer; do
+            echo "Generating via API with voice: $VOICE"
+            curl -sf -X POST http://localhost:8080/v1/audio/speech \
+              -H "Content-Type: application/json" \
+              -d "{\"input\": \"Hello from the API server, using the $VOICE voice.\", \"voice\": \"$VOICE\"}" \
+              --output "test-output/api/${VOICE}.wav"
+          done
+          ls -lh test-output/api/
+
+          kill $SERVER_PID
+
       - name: Upload test audio artifacts
         uses: actions/upload-artifact@v4
         with:
           name: test-audio
-          path: test-output/*.wav
+          path: test-output/**/*.wav
           retention-days: 14
