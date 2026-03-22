@@ -94,14 +94,15 @@ pub async fn speech(
 
     // --- Inference (blocking) ---
     let audio = tokio::task::spawn_blocking(move || -> Result<Vec<f32>, ApiError> {
-        let mut model = state.lock().map_err(|e| ApiError::internal(e.to_string()))?;
+        let mut model = state
+            .lock()
+            .map_err(|e| ApiError::internal(e.to_string()))?;
         model
             .generate(&input, &voice, speed, true)
             .map_err(|e| ApiError::internal(e.to_string()))
     })
     .await
-    .map_err(|e| ApiError::internal(format!("inference task failed: {e}")))?
-    ?;
+    .map_err(|e| ApiError::internal(format!("inference task failed: {e}")))??;
 
     tracing::info!(samples = audio.len(), "Speech generated");
 
