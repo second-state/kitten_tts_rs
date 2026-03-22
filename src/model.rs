@@ -66,7 +66,8 @@ impl KittenTTS {
     ) -> Result<Self> {
         eprintln!("Loading ONNX model from {}...", model_path.display());
 
-        let eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
+        #[allow(unused_mut)]
+        let mut eps: Vec<ort::execution_providers::ExecutionProviderDispatch> = Vec::new();
 
         #[cfg(feature = "tensorrt")]
         {

@@ -32,6 +32,13 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+      - name: Check compilation with GPU features
+        run: |
+          for FEATURE in cuda tensorrt coreml directml; do
+            echo "Checking --features $FEATURE ..."
+            cargo check --features "$FEATURE"
+          done
+
       - name: Build (release)
         run: cargo build --release
 
