@@ -102,6 +102,11 @@ jobs:
           done
           ls -lh test-output/api/
 
+          # Test streaming endpoint using OpenAI SDK
+          pip install openai
+          python3 tests/test_streaming.py --base-url http://localhost:8080/v1 --output-dir test-output/stream
+          ls -lh test-output/stream/
+
           kill $SERVER_PID
 
       - name: Upload test audio artifacts

@@ -155,7 +155,8 @@ impl KittenTTS {
         Ok(all_audio)
     }
 
-    fn generate_chunk(&mut self, text: &str, voice: &str, mut speed: f32) -> Result<Vec<f32>> {
+    /// Generate audio for a single text chunk. Returns f32 samples at 24 kHz.
+    pub fn generate_chunk(&mut self, text: &str, voice: &str, mut speed: f32) -> Result<Vec<f32>> {
         // Resolve voice name
         let internal_voice =
             voices::resolve_voice_name(voice, &self.voice_aliases).with_context(|| {
@@ -214,7 +215,7 @@ impl KittenTTS {
 }
 
 /// Split text into chunks for processing, splitting on sentence boundaries.
-fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
+pub fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
     let sentences: Vec<&str> = regex::Regex::new(r"[.!?]+").unwrap().split(text).collect();
 
     let mut chunks = Vec::new();
@@ -252,7 +253,7 @@ fn chunk_text(text: &str, max_len: usize) -> Vec<String> {
     chunks
 }
 
-fn ensure_punctuation(text: &str) -> String {
+pub fn ensure_punctuation(text: &str) -> String {
     let text = text.trim();
     if text.is_empty() {
         return text.to_string();
@@ -263,4 +264,82 @@ fn ensure_punctuation(text: &str) -> String {
     } else {
         format!("{text},")
     }
+}
+
+/// Split text into chunks optimized for streaming: the first chunk is split at the
+/// earliest clause boundary (`,`, `;`, `:`, ` — `, ` - `) within `first_max` characters
+/// to minimize time-to-first-audio. Remaining text uses normal sentence-level chunking
+/// with `rest_max` as the size limit.
+pub fn chunk_text_streaming(text: &str, first_max: usize, rest_max: usize) -> Vec<String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Vec::new();
+    }
+
+    // For short text, just return as a single chunk
+    if text.len() <= first_max {
+        return vec![ensure_punctuation(text)];
+    }
+
+    // Find the earliest clause boundary within first_max chars
+    let search_region = &text[..text.len().min(first_max)];
+    let clause_delimiters = [", ", "; ", ": ", " — ", " - "];
+
+    let mut earliest_split = None;
+    for delim in &clause_delimiters {
+        if let Some(pos) = search_region.find(delim) {
+            // Split after the delimiter punctuation char, before the space
+            let split_at = pos + 1;
+            if split_at > 0 {
+                earliest_split = Some(match earliest_split {
+                    Some(prev) if prev < split_at => prev,
+                    _ => split_at,
+                });
+            }
+        }
+    }
+
+    // Also check for sentence boundaries within first_max
+    let sentence_re = regex::Regex::new(r"[.!?]+").unwrap();
+    if let Some(m) = sentence_re.find(search_region) {
+        let split_at = m.end();
+        earliest_split = Some(match earliest_split {
+            Some(prev) if prev < split_at => prev,
+            _ => split_at,
+        });
+    }
+
+    let (first, rest) = match earliest_split {
+        Some(pos) => (&text[..pos], text[pos..].trim()),
+        // No boundary found — split at first word boundary before first_max
+        None => {
+            let words: Vec<&str> = text.split_whitespace().collect();
+            let mut len = 0;
+            let mut split_words = 0;
+            for (i, w) in words.iter().enumerate() {
+                if len + w.len() + if i > 0 { 1 } else { 0 } > first_max {
+                    break;
+                }
+                len += w.len() + if i > 0 { 1 } else { 0 };
+                split_words = i + 1;
+            }
+            if split_words == 0 {
+                split_words = 1;
+            }
+            let first_text: String = words[..split_words].join(" ");
+            let rest_text: String = words[split_words..].join(" ");
+            // Return early since we built owned Strings
+            let mut chunks = vec![ensure_punctuation(&first_text)];
+            if !rest_text.is_empty() {
+                chunks.extend(chunk_text(&rest_text, rest_max));
+            }
+            return chunks;
+        }
+    };
+
+    let mut chunks = vec![ensure_punctuation(first)];
+    if !rest.is_empty() {
+        chunks.extend(chunk_text(rest, rest_max));
+    }
+    chunks
 }
