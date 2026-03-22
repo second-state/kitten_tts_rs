@@ -145,6 +145,32 @@ curl -X POST http://localhost:8080/v1/audio/speech \
 
 All 8 KittenTTS voices (Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo) can also be used directly by name.
 
+**SSE streaming:**
+
+For lower time-to-first-audio on longer texts, set `"stream": true` with `"response_format": "pcm"`. The server returns [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) with base64-encoded PCM audio chunks, compatible with the OpenAI streaming TTS format:
+
+```bash
+curl -N -X POST http://localhost:8080/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kitten-tts",
+    "input": "Hello, this is a streaming test. Each sentence is sent as a separate audio chunk.",
+    "voice": "alloy",
+    "response_format": "pcm",
+    "stream": true
+  }'
+```
+
+Each event is a JSON object on a `data:` line:
+
+```
+data: {"type":"speech.audio.delta","delta":"<base64-encoded-pcm>"}
+data: {"type":"speech.audio.delta","delta":"<base64-encoded-pcm>"}
+data: {"type":"speech.audio.done"}
+```
+
+The `delta` field contains 16-bit signed little-endian PCM at 24 kHz, base64-encoded. The first chunk is split at the earliest clause boundary for fast initial playback.
+
 ## Building from Source
 
 ### CPU Only (recommended for most users)
