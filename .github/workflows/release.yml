@@ -55,11 +55,12 @@ jobs:
         env:
           ORT_LIB_STRATEGY: download
 
-      - name: Package binary
+      - name: Package binaries
         run: |
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/kitten-tts dist/${{ matrix.name }}
-          chmod +x dist/${{ matrix.name }}
+          mkdir -p dist/${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/kitten-tts dist/${{ matrix.name }}/
+          cp target/${{ matrix.target }}/release/kitten-tts-server dist/${{ matrix.name }}/
+          chmod +x dist/${{ matrix.name }}/kitten-tts dist/${{ matrix.name }}/kitten-tts-server
           cd dist && tar czf ${{ matrix.name }}.tar.gz ${{ matrix.name }}
 
       - name: Upload artifact
@@ -68,8 +69,49 @@ jobs:
           name: ${{ matrix.name }}
           path: dist/${{ matrix.name }}.tar.gz
 
+  bundle-models:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all models from Hugging Face
+        run: |
+          mkdir -p models/kitten-tts-mini
+          for FILE in config.json kitten_tts_mini_v0_8.onnx voices.npz; do
+            curl -L -o "models/kitten-tts-mini/$FILE" \
+              "https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/$FILE"
+          done
+
+          mkdir -p models/kitten-tts-micro
+          for FILE in config.json kitten_tts_micro_v0_8.onnx voices.npz; do
+            curl -L -o "models/kitten-tts-micro/$FILE" \
+              "https://huggingface.co/KittenML/kitten-tts-micro-0.8/resolve/main/$FILE"
+          done
+
+          mkdir -p models/kitten-tts-nano
+          for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
+            curl -L -o "models/kitten-tts-nano/$FILE" \
+              "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/main/$FILE"
+          done
+
+          mkdir -p models/kitten-tts-nano-int8
+          for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
+            curl -L -o "models/kitten-tts-nano-int8/$FILE" \
+              "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/$FILE"
+          done
+
+          echo "Downloaded models:"
+          du -sh models/*/
+
+      - name: Package models
+        run: tar czf kitten-tts-models.tar.gz models
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kitten-tts-models
+          path: kitten-tts-models.tar.gz
+
   release:
-    needs: build
+    needs: [build, bundle-models]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

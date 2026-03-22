@@ -18,11 +18,11 @@ KittenTTS delivers high-quality voice synthesis with models ranging from **15M t
 
 ## What This Rust Port Adds
 
-- **Single binary** — no Python, no pip, no virtualenv; just one executable
+- **Two binaries** — `kitten-tts` CLI and `kitten-tts-server` (OpenAI-compatible API)
 - **Fast startup** — ~100ms vs ~2s for Python import overhead
 - **Tiny footprint** — ~10 MB binary (+ model weights) vs ~500 MB Python environment
 - **GPU acceleration** — optional CUDA, TensorRT, CoreML, or DirectML via Cargo features
-- **Cross-platform** — builds for Linux (x86_64, aarch64) and macOS (x86_64, aarch64)
+- **Cross-platform** — builds for Linux (x86_64, aarch64) and macOS (aarch64)
 
 ## Available Models
 
@@ -35,84 +35,115 @@ KittenTTS delivers high-quality voice synthesis with models ranging from **15M t
 
 ## Quick Start
 
-### Prerequisites
+### 1. Install Dependencies
 
-- **espeak-ng** for phonemization:
-  ```bash
-  # macOS
-  brew install espeak-ng
-
-  # Ubuntu/Debian
-  sudo apt-get install -y espeak-ng
-
-  # Fedora/RHEL
-  sudo dnf install espeak-ng
-
-  # Arch
-  sudo pacman -S espeak-ng
-  ```
-
-### Download a Model (no Python required)
-
-Download models directly from Hugging Face using `curl`:
+**espeak-ng** is required for phonemization:
 
 ```bash
-mkdir -p models/kitten-tts-mini
+# macOS
+brew install espeak-ng
 
-# Download config, model, and voices
-for FILE in config.json kitten_tts_mini_v0_8.onnx voices.npz; do
-  curl -L -o "models/kitten-tts-mini/$FILE" \
-    "https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/$FILE"
-done
+# Ubuntu/Debian
+sudo apt-get install -y espeak-ng
+
+# Fedora/RHEL
+sudo dnf install espeak-ng
+
+# Arch
+sudo pacman -S espeak-ng
 ```
 
-For the micro model:
+### 2. Download Binaries
+
+Download the pre-built binaries for your platform from the [Releases](https://github.com/second-state/kitten_tts_rs/releases) page:
+
 ```bash
-mkdir -p models/kitten-tts-micro
-for FILE in config.json kitten_tts_micro_v0_8.onnx voices.npz; do
-  curl -L -o "models/kitten-tts-micro/$FILE" \
-    "https://huggingface.co/KittenML/kitten-tts-micro-0.8/resolve/main/$FILE"
-done
+# Example: Linux x86_64
+curl -LO https://github.com/second-state/kitten_tts_rs/releases/latest/download/kitten-tts-x86_64-linux.tar.gz
+tar xzf kitten-tts-x86_64-linux.tar.gz
+
+# Example: macOS Apple Silicon
+curl -LO https://github.com/second-state/kitten_tts_rs/releases/latest/download/kitten-tts-aarch64-macos.tar.gz
+tar xzf kitten-tts-aarch64-macos.tar.gz
 ```
 
-For the nano model:
+Each archive contains two binaries:
+- `kitten-tts` — CLI tool for one-off speech generation
+- `kitten-tts-server` — OpenAI-compatible API server
+
+### 3. Download Models
+
 ```bash
-mkdir -p models/kitten-tts-nano
-for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
-  curl -L -o "models/kitten-tts-nano/$FILE" \
-    "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/main/$FILE"
-done
+curl -LO https://github.com/second-state/kitten_tts_rs/releases/latest/download/kitten-tts-models.tar.gz
+tar xzf kitten-tts-models.tar.gz
 ```
 
-### Download Pre-built Binary
+This extracts a `models/` directory with all available models:
 
-Check the [Releases](https://github.com/second-state/kitten_tts_rs/releases) page for pre-built binaries for your platform.
+```
+models/
+├── kitten-tts-mini/         # 80M params, 80 MB — highest quality
+├── kitten-tts-micro/        # 40M params, 41 MB — balanced
+├── kitten-tts-nano/         # 15M params, 56 MB (fp32)
+└── kitten-tts-nano-int8/    # 15M params, 25 MB — smallest
+```
 
-### Generate Speech
+### 4. Generate Speech (CLI)
 
 ```bash
 # Basic usage (outputs output.wav)
-kitten-tts ./models/kitten-tts-mini "Hello, world!" Bruno
+./kitten-tts ./models/kitten-tts-mini "Hello, world!" Bruno
 
 # Specify output file and speed
-kitten-tts ./models/kitten-tts-mini "Hello, world!" --voice Luna --speed 1.2 --output hello.wav
+./kitten-tts ./models/kitten-tts-mini "Hello, world!" --voice Luna --speed 1.2 --output hello.wav
 
 # List available voices
-kitten-tts ./models/kitten-tts-mini "" --list-voices
+./kitten-tts ./models/kitten-tts-mini "" --list-voices
 ```
 
-### Available Voices
+### 5. Run the API Server
 
-| Voice | Gender | Description |
+Start the server with a model directory:
+
+```bash
+./kitten-tts-server ./models/kitten-tts-mini --host 0.0.0.0 --port 8080
+```
+
+The server exposes an OpenAI-compatible `/v1/audio/speech` endpoint:
+
+```bash
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kitten-tts",
+    "input": "Hello, world! This is KittenTTS running as an API server.",
+    "voice": "alloy",
+    "response_format": "wav",
+    "speed": 1.0
+  }' \
+  --output speech.wav
+```
+
+**API endpoints:**
+
+| Method | Path | Description |
 |---|---|---|
-| Bella | Female | |
-| Jasper | Male | |
-| Luna | Female | |
-| Bruno | Male | |
-| Rosie | Female | |
-| Hugo | Male | |
-| Kiki | Female | |
-| Leo | Male | |
+| `POST` | `/v1/audio/speech` | Generate speech from text |
+| `GET` | `/v1/models` | List loaded model |
+| `GET` | `/health` | Health check |
+
+**Voice mapping (OpenAI → KittenTTS):**
+
+| OpenAI | KittenTTS | Gender |
+|---|---|---|
+| alloy | Bella | Female |
+| echo | Jasper | Male |
+| fable | Luna | Female |
+| onyx | Bruno | Male |
+| nova | Rosie | Female |
+| shimmer | Hugo | Male |
+
+All 8 KittenTTS voices (Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo) can also be used directly by name.
 
 ## Building from Source
 
@@ -123,7 +154,7 @@ git clone https://github.com/second-state/kitten_tts_rs.git
 cd kitten_tts_rs
 
 cargo build --release
-# Binary at: target/release/kitten-tts
+# Binaries at: target/release/kitten-tts and target/release/kitten-tts-server
 ```
 
 ### With CUDA (NVIDIA GPU)
@@ -154,6 +185,61 @@ cargo build --release --features coreml
 cargo build --release --features directml
 ```
 
+## Building and Testing Locally
+
+After building from source, download models directly from Hugging Face to test:
+
+```bash
+# Download the nano-int8 model (smallest, 25 MB — good for testing)
+mkdir -p models/kitten-tts-nano-int8
+for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-nano-int8/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/$FILE"
+done
+```
+
+For other models, replace the directory name and URL with the appropriate values from the [Available Models](#available-models) table:
+
+```bash
+# Mini (80M params, highest quality)
+mkdir -p models/kitten-tts-mini
+for FILE in config.json kitten_tts_mini_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-mini/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-mini-0.8/resolve/main/$FILE"
+done
+
+# Micro (40M params, balanced)
+mkdir -p models/kitten-tts-micro
+for FILE in config.json kitten_tts_micro_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-micro/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-micro-0.8/resolve/main/$FILE"
+done
+
+# Nano fp32 (15M params)
+mkdir -p models/kitten-tts-nano
+for FILE in config.json kitten_tts_nano_v0_8.onnx voices.npz; do
+  curl -L -o "models/kitten-tts-nano/$FILE" \
+    "https://huggingface.co/KittenML/kitten-tts-nano-0.8-fp32/resolve/main/$FILE"
+done
+```
+
+Test the CLI:
+
+```bash
+./target/release/kitten-tts ./models/kitten-tts-nano-int8 "Hello, world!" Bruno
+```
+
+Test the API server:
+
+```bash
+./target/release/kitten-tts-server ./models/kitten-tts-nano-int8 --port 8080
+# In another terminal:
+curl -X POST http://localhost:8080/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Hello from the API!", "voice": "alloy"}' \
+  --output test.wav
+```
+
 ## CoreML on Apple Silicon: Pros and Cons
 
 ### Pros
@@ -175,12 +261,17 @@ For KittenTTS models (15M–80M params), **CPU-only is faster and simpler**. ONN
 
 ```
 src/
-├── main.rs        # CLI entry point (clap)
-├── lib.rs         # Library root
-├── model.rs       # ONNX session, inference, text chunking
-├── phonemize.rs   # espeak-ng → IPA phonemes → token IDs
-├── preprocess.rs  # Text normalization (numbers, currency, etc.)
-└── voices.rs      # NPZ voice embedding loader
+├── main.rs                          # CLI binary (clap)
+├── lib.rs                           # Library root
+├── model.rs                         # ONNX session, inference, text chunking
+├── phonemize.rs                     # espeak-ng → IPA phonemes → token IDs
+├── preprocess.rs                    # Text normalization (numbers, currency, etc.)
+├── voices.rs                        # NPZ voice embedding loader
+└── bin/kitten-tts-server/           # API server binary
+    ├── main.rs                      # Axum/Tokio server, model loading
+    ├── error.rs                     # OpenAI-style error responses
+    ├── state.rs                     # Shared model state (Arc<Mutex>)
+    └── routes/{health,models,speech}.rs
 ```
 
 ### How It Works
@@ -199,7 +290,7 @@ src/
 | Dependencies | onnxruntime, misaki, phonemizer, numpy, soundfile, spacy | ort, hound, espeak-ng (system) |
 | Install size | ~500 MB (with venv) | ~10 MB binary |
 | Startup time | ~2s (Python import) | ~100ms |
-| Deployment | pip install + venv | Single binary |
+| Deployment | pip install + venv | Single binary (CLI + API server) |
 | GPU support | onnxruntime-gpu pip package | Cargo feature flags |
 
 ## License
