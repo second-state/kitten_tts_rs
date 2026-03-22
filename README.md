@@ -2,8 +2,8 @@
 
 Rust implementation of [KittenTTS](https://github.com/KittenML/KittenTTS). KittenTTS delivers high-quality voice synthesis with models ranging from **15M to 80M parameters** (25–80 MB on disk). This Rust implementation provides self-contained binaries with no Python dependency.
 
-* A Rust CLI program. It is ideally suited for AI agent skills.
-* An OpenAI compatible API server. It supports streaming for realtime audio applications like the [EchoKit](https://echokit.dev/).
+* A [Rust CLI program](#4-generate-speech-cli). It is ideally suited for AI agent skills.
+* An [OpenAI compatible API server](#5-run-the-api-server). It supports [SSE streaming](#sse-streaming) for realtime audio applications like the [EchoKit](https://echokit.dev/).
 
 > **Adapted from:** [KittenML/KittenTTS](https://github.com/KittenML/KittenTTS) (Apache-2.0). All model weights are from the original project.
 
@@ -146,7 +146,7 @@ curl -X POST http://localhost:8080/v1/audio/speech \
 
 All 8 KittenTTS voices (Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo) can also be used directly by name.
 
-**SSE streaming:**
+### SSE Streaming
 
 For lower time-to-first-audio on longer texts, set `"stream": true` with `"response_format": "pcm"`. The server returns [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) with base64-encoded PCM audio chunks, compatible with the OpenAI streaming TTS format:
 
