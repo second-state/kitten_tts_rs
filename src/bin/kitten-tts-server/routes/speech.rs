@@ -139,7 +139,10 @@ async fn speech_full(
                 .map_err(|e| ApiError::internal(e.to_string()))?
         };
 
-        tracing::info!(samples = audio.len(), "Speech generated, encoding as {format}");
+        tracing::info!(
+            samples = audio.len(),
+            "Speech generated, encoding as {format}"
+        );
 
         encode::encode(&audio, format).map_err(|e| ApiError::internal(e.to_string()))
     })

@@ -108,8 +108,8 @@ fn encode_mp3(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
     let mp3_sample_rate = 44100u32;
     let samples_44k = resample(samples, SAMPLE_RATE, mp3_sample_rate);
 
-    let mut encoder = Builder::new()
-        .ok_or_else(|| anyhow::anyhow!("Failed to create MP3 encoder"))?;
+    let mut encoder =
+        Builder::new().ok_or_else(|| anyhow::anyhow!("Failed to create MP3 encoder"))?;
     encoder
         .set_num_channels(1)
         .map_err(|e| anyhow::anyhow!("MP3 config error: {:?}", e))?;
@@ -154,8 +154,7 @@ fn encode_flac(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
         .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i32)
         .collect();
 
-    let source =
-        flacenc::source::MemSource::from_samples(&pcm_i32, 1, 16, SAMPLE_RATE as usize);
+    let source = flacenc::source::MemSource::from_samples(&pcm_i32, 1, 16, SAMPLE_RATE as usize);
 
     let config = flacenc::config::Encoder::default();
     let block_size = config.block_size;
@@ -239,12 +238,7 @@ fn encode_opus(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
                 PacketWriteEndInfo::NormalPacket
             };
 
-            writer.write_packet(
-                opus_out[..encoded_len].to_vec(),
-                serial,
-                end_info,
-                granule,
-            )?;
+            writer.write_packet(opus_out[..encoded_len].to_vec(), serial, end_info, granule)?;
         }
     }
 
