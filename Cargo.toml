@@ -4,6 +4,8 @@ version = "0.2.2"
 edition = "2021"
 description = "Rust port of KittenTTS — ultra-lightweight ONNX-based text-to-speech"
 license = "Apache-2.0"
+repository = "https://github.com/second-state/kitten_tts_rs"
+homepage = "https://github.com/second-state/kitten_tts_rs"
 
 [[bin]]
 name = "kitten-tts"
