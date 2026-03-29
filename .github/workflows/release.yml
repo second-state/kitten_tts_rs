@@ -17,7 +17,7 @@ jobs:
             os: ubuntu-latest
             name: kitten-tts-x86_64-linux
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04-arm
             name: kitten-tts-aarch64-linux
           - target: aarch64-apple-darwin
             os: macos-15
@@ -35,21 +35,13 @@ jobs:
 
       - name: Install build dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install automake autoconf libtool cmake
+        run: brew install automake autoconf libtool
 
-      - name: Install cross-compilation tools (aarch64 Linux)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu autoconf automake libtool cmake
-          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
-          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
-
-      - name: Install build dependencies (x86_64 Linux)
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf automake libtool cmake
+          sudo apt-get install -y autoconf automake libtool
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -59,13 +51,6 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Set cross-compilation env vars (aarch64 Linux)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CXX=aarch64-linux-gnu-g++" >> $GITHUB_ENV
-          echo "HOST_CC=gcc" >> $GITHUB_ENV
 
       - name: Build (release, CPU only)
         run: cargo build --release --target ${{ matrix.target }}
