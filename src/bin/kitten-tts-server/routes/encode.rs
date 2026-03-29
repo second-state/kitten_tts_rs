@@ -216,7 +216,7 @@ fn encode_opus(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
         // Encode audio in 20ms frames
         let mut opus_out = vec![0u8; 4000];
         let mut granule: u64 = 0;
-        let total_frames = (samples_48k.len() + frame_size - 1) / frame_size;
+        let total_frames = samples_48k.len().div_ceil(frame_size);
 
         for (i, chunk) in samples_48k.chunks(frame_size).enumerate() {
             let frame: Vec<f32> = if chunk.len() < frame_size {
