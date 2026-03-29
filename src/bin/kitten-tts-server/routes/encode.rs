@@ -175,8 +175,6 @@ fn encode_flac(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
 
 /// Encode f32 samples as OGG Opus (48 kHz mono).
 fn encode_opus(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
-    use audiopus::coder::Encoder as OpusEncoder;
-    use audiopus::{Application, Channels, SampleRate};
     use ogg::writing::{PacketWriteEndInfo, PacketWriter};
 
     // Opus works best at 48 kHz
@@ -185,64 +183,94 @@ fn encode_opus(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
     // 20ms frame at 48 kHz = 960 samples
     let frame_size: usize = 960;
 
-    let encoder = OpusEncoder::new(SampleRate::Hz48000, Channels::Mono, Application::Voip)
-        .map_err(|e| anyhow::anyhow!("Opus encoder init error: {:?}", e))?;
-
-    let mut ogg_buf = Vec::new();
-    let serial = 1u32;
-    {
-        let mut writer = PacketWriter::new(&mut ogg_buf);
-
-        // OpusHead identification header (RFC 7845)
-        let mut head = Vec::with_capacity(19);
-        head.extend_from_slice(b"OpusHead");
-        head.push(1); // version
-        head.push(1); // channel count (mono)
-        head.extend_from_slice(&0u16.to_le_bytes()); // pre-skip
-        head.extend_from_slice(&48000u32.to_le_bytes()); // input sample rate
-        head.extend_from_slice(&0i16.to_le_bytes()); // output gain
-        head.push(0); // channel mapping family 0
-        writer.write_packet(head, serial, PacketWriteEndInfo::EndPage, 0)?;
-
-        // OpusTags comment header
-        let vendor = b"kitten-tts-rs";
-        let mut tags = Vec::new();
-        tags.extend_from_slice(b"OpusTags");
-        tags.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
-        tags.extend_from_slice(vendor);
-        tags.extend_from_slice(&0u32.to_le_bytes());
-        writer.write_packet(tags, serial, PacketWriteEndInfo::EndPage, 0)?;
-
-        // Encode audio in 20ms frames
-        let mut opus_out = vec![0u8; 4000];
-        let mut granule: u64 = 0;
-        let total_frames = samples_48k.len().div_ceil(frame_size);
-
-        for (i, chunk) in samples_48k.chunks(frame_size).enumerate() {
-            let frame: Vec<f32> = if chunk.len() < frame_size {
-                let mut padded = chunk.to_vec();
-                padded.resize(frame_size, 0.0);
-                padded
-            } else {
-                chunk.to_vec()
-            };
-
-            let encoded_len = encoder
-                .encode_float(&frame, &mut opus_out)
-                .map_err(|e| anyhow::anyhow!("Opus encode error: {:?}", e))?;
-
-            granule += frame_size as u64;
-            let end_info = if i == total_frames - 1 {
-                PacketWriteEndInfo::EndStream
-            } else {
-                PacketWriteEndInfo::NormalPacket
-            };
-
-            writer.write_packet(opus_out[..encoded_len].to_vec(), serial, end_info, granule)?;
-        }
+    // Create Opus encoder via raw FFI
+    let mut error: std::os::raw::c_int = 0;
+    let encoder = unsafe {
+        audiopus_sys::opus_encoder_create(
+            48000,                                                      // sample rate
+            1,                                                          // channels (mono)
+            audiopus_sys::OPUS_APPLICATION_VOIP as std::os::raw::c_int, // application
+            &mut error,
+        )
+    };
+    if error != 0 || encoder.is_null() {
+        anyhow::bail!("Opus encoder init error: {}", error);
     }
 
-    Ok(ogg_buf)
+    let result = (|| -> anyhow::Result<Vec<u8>> {
+        let mut ogg_buf = Vec::new();
+        let serial = 1u32;
+        {
+            let mut writer = PacketWriter::new(&mut ogg_buf);
+
+            // OpusHead identification header (RFC 7845)
+            let mut head = Vec::with_capacity(19);
+            head.extend_from_slice(b"OpusHead");
+            head.push(1); // version
+            head.push(1); // channel count (mono)
+            head.extend_from_slice(&0u16.to_le_bytes()); // pre-skip
+            head.extend_from_slice(&48000u32.to_le_bytes()); // input sample rate
+            head.extend_from_slice(&0i16.to_le_bytes()); // output gain
+            head.push(0); // channel mapping family 0
+            writer.write_packet(head, serial, PacketWriteEndInfo::EndPage, 0)?;
+
+            // OpusTags comment header
+            let vendor = b"kitten-tts-rs";
+            let mut tags = Vec::new();
+            tags.extend_from_slice(b"OpusTags");
+            tags.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+            tags.extend_from_slice(vendor);
+            tags.extend_from_slice(&0u32.to_le_bytes());
+            writer.write_packet(tags, serial, PacketWriteEndInfo::EndPage, 0)?;
+
+            // Encode audio in 20ms frames
+            let mut opus_out = vec![0u8; 4000];
+            let mut granule: u64 = 0;
+            let total_frames = samples_48k.len().div_ceil(frame_size);
+
+            for (i, chunk) in samples_48k.chunks(frame_size).enumerate() {
+                let frame: Vec<f32> = if chunk.len() < frame_size {
+                    let mut padded = chunk.to_vec();
+                    padded.resize(frame_size, 0.0);
+                    padded
+                } else {
+                    chunk.to_vec()
+                };
+
+                let encoded_len = unsafe {
+                    audiopus_sys::opus_encode_float(
+                        encoder,
+                        frame.as_ptr(),
+                        frame_size as std::os::raw::c_int,
+                        opus_out.as_mut_ptr(),
+                        opus_out.len() as i32,
+                    )
+                };
+                if encoded_len < 0 {
+                    anyhow::bail!("Opus encode error: {}", encoded_len);
+                }
+                let encoded_len = encoded_len as usize;
+
+                granule += frame_size as u64;
+                let end_info = if i == total_frames - 1 {
+                    PacketWriteEndInfo::EndStream
+                } else {
+                    PacketWriteEndInfo::NormalPacket
+                };
+
+                writer.write_packet(opus_out[..encoded_len].to_vec(), serial, end_info, granule)?;
+            }
+        }
+
+        Ok(ogg_buf)
+    })();
+
+    // Always destroy the encoder
+    unsafe {
+        audiopus_sys::opus_encoder_destroy(encoder);
+    }
+
+    result
 }
 
 /// Resample audio from source_sr to target_sr using linear interpolation.
