@@ -13,6 +13,7 @@ use kitten_tts::model;
 use kitten_tts::preprocess;
 
 use crate::error::ApiError;
+use crate::routes::encode::{self, AudioFormat};
 use crate::state::AppState;
 
 /// OpenAI-compatible speech request body.
@@ -23,14 +24,14 @@ pub struct SpeechRequest {
     #[allow(dead_code)]
     pub model: String,
 
-    /// Text to synthesize (max 4096 characters)
+    /// Text to synthesize
     pub input: String,
 
     /// Voice name — accepts OpenAI names (alloy, echo, fable, onyx, nova, shimmer)
     /// or KittenTTS names (Bella, Jasper, Luna, Bruno, Rosie, Hugo, Kiki, Leo)
     pub voice: String,
 
-    /// Response audio format: "wav" (default) or "pcm"
+    /// Response audio format: "mp3" (default), "opus", "flac", "wav", "pcm", or "aac"
     #[serde(default = "default_format")]
     pub response_format: String,
 
@@ -44,7 +45,7 @@ pub struct SpeechRequest {
 }
 
 fn default_format() -> String {
-    "wav".to_string()
+    "mp3".to_string()
 }
 
 fn default_speed() -> f32 {
@@ -66,14 +67,9 @@ fn map_voice(voice: &str) -> &str {
 }
 
 /// Validate common request fields. Returns (voice, format) on success.
-fn validate_request(req: &SpeechRequest) -> Result<(String, String), ApiError> {
+fn validate_request(req: &SpeechRequest) -> Result<(String, AudioFormat), ApiError> {
     if req.input.is_empty() {
         return Err(ApiError::bad_request("'input' must not be empty"));
-    }
-    if req.input.len() > 4096 {
-        return Err(ApiError::bad_request(
-            "'input' must be at most 4096 characters",
-        ));
     }
     if !(0.25..=4.0).contains(&req.speed) {
         return Err(ApiError::bad_request(
@@ -81,15 +77,14 @@ fn validate_request(req: &SpeechRequest) -> Result<(String, String), ApiError> {
         ));
     }
 
-    let format = req.response_format.to_lowercase();
-    if format != "wav" && format != "pcm" {
-        return Err(ApiError::bad_request(format!(
-            "Unsupported response_format '{}'. Supported formats: wav, pcm",
+    let format = AudioFormat::parse(&req.response_format).ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "Unsupported response_format '{}'. Supported formats: mp3, opus, flac, wav, pcm, aac",
             req.response_format
-        )));
-    }
+        ))
+    })?;
 
-    if req.stream && format != "pcm" {
+    if req.stream && format != AudioFormat::Pcm {
         return Err(ApiError::bad_request(
             "Streaming only supports response_format 'pcm'",
         ));
@@ -112,6 +107,7 @@ pub async fn speech(
 
     tracing::info!(
         voice = %voice,
+        format = %format,
         speed = speed,
         len = input.len(),
         stream = stream,
@@ -125,36 +121,32 @@ pub async fn speech(
     }
 }
 
-/// Non-streaming: generate all audio at once and return as wav/pcm.
+/// Non-streaming: generate all audio at once and return in the requested format.
 async fn speech_full(
     state: AppState,
     input: String,
     voice: String,
     speed: f32,
-    format: String,
+    format: AudioFormat,
 ) -> Result<Response, ApiError> {
-    let audio = tokio::task::spawn_blocking(move || -> Result<Vec<f32>, ApiError> {
-        let mut model = state
-            .lock()
-            .map_err(|e| ApiError::internal(e.to_string()))?;
-        model
-            .generate(&input, &voice, speed, true)
-            .map_err(|e| ApiError::internal(e.to_string()))
+    let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, ApiError> {
+        let audio = {
+            let mut model = state
+                .lock()
+                .map_err(|e| ApiError::internal(e.to_string()))?;
+            model
+                .generate(&input, &voice, speed, true)
+                .map_err(|e| ApiError::internal(e.to_string()))?
+        };
+
+        tracing::info!(samples = audio.len(), "Speech generated, encoding as {format}");
+
+        encode::encode(&audio, format).map_err(|e| ApiError::internal(e.to_string()))
     })
     .await
     .map_err(|e| ApiError::internal(format!("inference task failed: {e}")))??;
 
-    tracing::info!(samples = audio.len(), "Speech generated");
-
-    let (bytes, content_type) = match format.as_str() {
-        "pcm" => (encode_pcm(&audio), "audio/pcm"),
-        _ => {
-            let wav = encode_wav(&audio).map_err(|e| ApiError::internal(e.to_string()))?;
-            (wav, "audio/wav")
-        }
-    };
-
-    Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
+    Ok(([(header::CONTENT_TYPE, format.content_type())], bytes).into_response())
 }
 
 /// SSE streaming: generate audio chunk-by-chunk and send each as an SSE event.
@@ -199,7 +191,7 @@ async fn speech_stream(
                 }
             };
 
-            let pcm = encode_pcm(&audio);
+            let pcm = encode::encode_pcm(&audio);
             let delta = b64.encode(&pcm);
 
             tracing::debug!(
@@ -232,34 +224,4 @@ async fn speech_stream(
     Ok(Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response())
-}
-
-/// Encode f32 samples as raw 16-bit signed little-endian PCM.
-fn encode_pcm(samples: &[f32]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(samples.len() * 2);
-    for &s in samples {
-        let i = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
-        buf.extend_from_slice(&i.to_le_bytes());
-    }
-    buf
-}
-
-/// Encode f32 samples as a WAV file (mono, 24 kHz, 16-bit PCM).
-fn encode_wav(samples: &[f32]) -> anyhow::Result<Vec<u8>> {
-    let mut cursor = std::io::Cursor::new(Vec::new());
-    {
-        let spec = hound::WavSpec {
-            channels: 1,
-            sample_rate: 24000,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
-        let mut writer = hound::WavWriter::new(&mut cursor, spec)?;
-        for &s in samples {
-            let i = (s * 32767.0).clamp(-32768.0, 32767.0) as i16;
-            writer.write_sample(i)?;
-        }
-        writer.finalize()?;
-    }
-    Ok(cursor.into_inner())
 }

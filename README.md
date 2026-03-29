@@ -114,16 +114,36 @@ The server exposes an OpenAI-compatible `/v1/audio/speech` endpoint:
 
 ```bash
 curl -X POST http://localhost:8080/v1/audio/speech \
-  -H "Content-Type: application/json" \
+  -H 'Content-Type: application/json' \
   -d '{
     "model": "kitten-tts",
     "input": "Hello, world! This is KittenTTS running as an API server.",
-    "voice": "alloy",
-    "response_format": "wav",
-    "speed": 1.0
+    "voice": "alloy"
   }' \
-  --output speech.wav
+  --output speech.mp3
 ```
+
+**Request body:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `input` | string | *(required)* | Text to synthesize |
+| `voice` | string | *(required)* | Voice name (OpenAI or KittenTTS names) |
+| `model` | string | `""` | Accepted for compatibility; ignored |
+| `response_format` | string | `"mp3"` | Output audio format (see below) |
+| `speed` | float | `1.0` | Speech speed multiplier (0.25–4.0) |
+| `stream` | bool | `false` | Enable SSE streaming (requires `"pcm"` format) |
+
+**Supported audio formats:**
+
+| Format | Content-Type | Description |
+|---|---|---|
+| `mp3` | `audio/mpeg` | MP3 128 kbps CBR (default, resampled to 44.1 kHz) |
+| `opus` | `audio/ogg` | Opus in OGG container (resampled to 48 kHz) |
+| `flac` | `audio/flac` | FLAC lossless (24 kHz native) |
+| `wav` | `audio/wav` | WAV 16-bit PCM (24 kHz native) |
+| `pcm` | `audio/pcm` | Raw 16-bit signed little-endian PCM (24 kHz) |
+| `aac` | — | Not yet supported (returns error) |
 
 **API endpoints:**
 
@@ -262,9 +282,9 @@ Test the API server:
 ./target/release/kitten-tts-server ./models/kitten-tts-nano-int8 --port 8080
 # In another terminal:
 curl -X POST http://localhost:8080/v1/audio/speech \
-  -H "Content-Type: application/json" \
+  -H 'Content-Type: application/json' \
   -d '{"input": "Hello from the API", "voice": "alloy"}' \
-  --output test.wav
+  --output test.mp3
 ```
 
 ## CoreML on Apple Silicon: Pros and Cons
@@ -298,7 +318,7 @@ src/
     ├── main.rs                      # Axum/Tokio server, model loading
     ├── error.rs                     # OpenAI-style error responses
     ├── state.rs                     # Shared model state (Arc<Mutex>)
-    └── routes/{health,models,speech}.rs
+    └── routes/{health,models,speech,encode}.rs
 ```
 
 ### How It Works
@@ -308,7 +328,7 @@ src/
 3. **Token encoding** — Maps IPA phonemes to integer token IDs using a symbol table matching the original Python implementation
 4. **Voice selection** — Loads style embeddings from the NPZ voice file
 5. **ONNX inference** — Runs the model with input tokens, voice style, and speed parameters
-6. **WAV output** — Writes 24 kHz 16-bit PCM audio
+6. **Audio encoding** — Outputs MP3 (default), Opus, FLAC, WAV, or raw PCM
 
 ### Compared to Python KittenTTS
 
@@ -319,6 +339,36 @@ src/
 | Startup time | ~2s (Python import) | ~100ms |
 | Deployment | pip install + venv | Single binary (CLI + API server) |
 | GPU support | onnxruntime-gpu pip package | Cargo feature flags |
+
+## Performance
+
+Benchmarked on Apple Mac M4 Pro (CPU only, no GPU acceleration). WAV output format. RTF (Real-Time Factor) = execution time / audio length — lower is better, < 1.0 means faster than real-time.
+
+**Test inputs:**
+- Short: `"Hello, world!"` (14 chars)
+- Long: 5-sentence paragraph (571 chars, multiple chunks)
+
+### kitten-tts-nano-int8 (15M params, 25 MB)
+
+| Test | Exec Time | Audio Length | RTF |
+|---|---|---|---|
+| CLI short | 0.93s | 1.47s | 0.63 |
+| CLI long | 5.73s | 47.18s | 0.12 |
+| API short | 0.24s | 1.94s | 0.12 |
+| API long | 6.78s | 61.91s | 0.11 |
+
+### kitten-tts-mini (80M params, 80 MB)
+
+| Test | Exec Time | Audio Length | RTF |
+|---|---|---|---|
+| CLI short | 0.71s | 1.52s | 0.47 |
+| CLI long | 11.33s | 44.11s | 0.26 |
+| API short | 0.64s | 2.04s | 0.31 |
+| API long | 14.35s | 55.91s | 0.26 |
+
+CLI times include model loading (~0.3s). API server times are warm (model pre-loaded, after warmup requests).
+
+The nano-int8 model runs **8–9x faster than real-time** and is recommended for interactive and real-time applications. The mini model produces higher quality audio at **~4x faster than real-time**.
 
 ## License
 

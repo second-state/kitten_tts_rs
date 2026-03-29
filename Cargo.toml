@@ -1,5 +1,5 @@
 [package]
-name = "kitten-tts"
+name = "kitten-tts-rs"
 version = "0.1.0"
 edition = "2021"
 description = "Rust port of KittenTTS — ultra-lightweight ONNX-based text-to-speech"
@@ -21,6 +21,12 @@ path = "src/lib.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 hound = "3.5"
+mp3lame-encoder = "0.2"
+flacenc = "0.5"
+audiopus = "0.2"
+audiopus_sys = { version = "0.1", features = ["static"] }
+ogg = "0.9"
+symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "ogg", "wav"] }
 ndarray = "0.17"
 ort = "2.0.0-rc.12"
 regex = "1"
